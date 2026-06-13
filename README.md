@@ -1,16 +1,10 @@
 # Sudoku Solver & Backtracking Visualizer
 
-A responsive Sudoku application built with HTML, CSS, and vanilla JavaScript. It can solve puzzles instantly or display the recursive backtracking process step by step, including candidate values, recursion depth, placements, and backtracks.
-
-## Repository
-
-[View the source code](https://github.com/Ujjwal-1267/Sudoku-Solver)
+A responsive Sudoku application built with HTML, CSS, and vanilla JavaScript. It can solve Sudoku puzzles instantly or visualize the recursive backtracking algorithm step by step with live placements, backtracks, candidate values, and recursion depth.
 
 ## Live Demo
 
-After enabling GitHub Pages, the project will be available at:
-
-[Open Sudoku Solver](https://ujjwal-1267.github.io/Sudoku-Solver/)
+[Play Sudoku Solver](https://ujjwal-1267.github.io/Sudoku-Solver/)
 
 ## Preview
 
@@ -18,58 +12,47 @@ After enabling GitHub Pages, the project will be available at:
 
 ## Features
 
-### Solver and visualization
+### Solver & Visualization
 
-- Recursive backtracking solver
-- Minimum Remaining Values optimization
-- Instant solution mode
-- Step-by-step backtracking visualization
-- Live placement and backtrack highlighting
-- Current cell, attempted value, candidates, and recursion depth
-- Recent-step activity log
-- Pause, resume, and stop controls
-- Slow, medium, fast, and very-fast animation speeds
-- Live progress bar
-- Placement, backtrack, step, and execution-time statistics
-- Unsolvable-puzzle detection
-- Unique and multiple-solution detection
+* Recursive backtracking solver
+* Step-by-step backtracking visualization
+* Live placement and backtrack highlighting
+* Current cell, attempted value, valid candidates, and recursion depth
+* Pause, resume, and stop controls
+* Multiple visualization speed options
+* Progress bar and live solver statistics
+* Unique and multiple-solution detection
+* Unsolvable puzzle detection
 
-### Puzzle tools
+### Puzzle Tools
 
-- Easy, medium, hard, and expert preset puzzles
-- Random selection from the chosen difficulty
-- Manual puzzle entry
-- Input validation and conflict highlighting
-- Check-progress feature
-- Hint system
-- Undo and redo
-- Reset puzzle
-- Clear board
-- Automatic completion detection
-- Keyboard navigation
-- Mobile number pad
+* Easy, medium, hard, and expert preset puzzles
+* Manual puzzle entry
+* Input validation and conflict highlighting
+* Hint system
+* Check-progress feature
+* Undo and redo
+* Reset puzzle and clear board
+* Automatic completion detection
+* Keyboard navigation and mobile number pad
 
-### Interface and persistence
+### Interface
 
-- Responsive desktop, tablet, and mobile layout
-- Light and dark themes
-- Saved theme preference
-- Automatic progress saving with `localStorage`
-- Saved progress restoration after refresh
-- Row, column, box, and matching-number highlighting
-- ARIA labels and live status announcements
-- Visible keyboard focus states
+* Responsive desktop and mobile layout
+* Light and dark themes
+* Automatic progress saving with `localStorage`
+* Saved progress restoration after refresh
+* Row, column, box, and matching-number highlighting
+* Accessible keyboard focus states and ARIA labels
 
 ## Technologies Used
 
-- HTML5
-- CSS3
-- JavaScript
-- DOM manipulation
-- Recursion and backtracking
-- Two-dimensional arrays
-- Undo and redo stacks
-- Browser `localStorage`
+* HTML5
+* CSS3
+* JavaScript
+* DOM Manipulation
+* Recursion & Backtracking
+* Browser `localStorage`
 
 ## Project Structure
 
@@ -78,7 +61,9 @@ Sudoku-Solver/
 ├── index.html
 ├── style.css
 ├── script.js
-└── README.md
+├── README.md
+└── assets/
+    └── preview.png
 ```
 
 ## How the Solver Works
@@ -86,77 +71,41 @@ Sudoku-Solver/
 The solver uses recursive backtracking:
 
 1. Find an empty cell.
-2. Calculate the legal candidates for that cell.
+2. Calculate all valid candidates.
 3. Place one candidate.
-4. Recursively continue with the next empty cell.
-5. If the solver reaches a dead end, remove the previous value.
-6. Try the next candidate.
-7. Continue until the puzzle is solved or every possibility has failed.
+4. Continue recursively.
+5. If a dead end is reached, remove the value and backtrack.
+6. Repeat until the puzzle is solved.
 
-The solver uses the **Minimum Remaining Values** approach: it chooses the empty cell with the fewest legal candidates. This reduces unnecessary recursive branches compared with always selecting the first empty cell.
-
-## Using the Application
-
-### Load a preset puzzle
-
-1. Select Easy, Medium, Hard, or Expert.
-2. Click **New puzzle**.
-3. Enter values manually, request a hint, solve instantly, or start the visualization.
-
-### Enter a custom puzzle
-
-1. Click **Clear board**.
-2. Enter the starting clues.
-3. Click **Solve instantly**, **Visualize**, **Hint**, or **Check progress**.
-
-The entered values are then treated as the original clues, allowing **Reset puzzle** to restore the custom puzzle.
-
-### Watch the algorithm
-
-1. Select a visualization speed.
-2. Click **Visualize**.
-3. Follow the active cell, candidates, attempted value, recursion depth, and recent-step log.
-4. Use **Pause**, **Resume**, or **Stop** when needed.
+The algorithm uses the **Minimum Remaining Values (MRV)** strategy by selecting the empty cell with the fewest legal candidates first, reducing unnecessary recursive branches.
 
 ## Keyboard Controls
 
-- Arrow keys: move between cells
-- `1-9`: enter a value
-- Backspace, Delete, or `0`: erase a value
-- `Ctrl + Z`: undo
-- `Ctrl + Y` or `Ctrl + Shift + Z`: redo
+* Arrow keys → Move between cells
+* `1-9` → Enter value
+* `Backspace`, `Delete`, or `0` → Clear value
+* `Ctrl + Z` → Undo
+* `Ctrl + Y` or `Ctrl + Shift + Z` → Redo
 
 ## Run Locally
 
-No installation or build step is required.
-
-1. Clone the repository:
-
 ```bash
 git clone https://github.com/Ujjwal-1267/Sudoku-Solver.git
-```
-
-2. Open the project folder:
-
-```bash
 cd Sudoku-Solver
 ```
 
-3. Open `index.html` in a browser.
-
-You can also use the **Live Server** extension in VS Code.
+Open `index.html` in a browser or use the **Live Server** extension in VS Code.
 
 ## What I Learned
 
 Through this project, I practised:
 
-- Recursive problem solving
-- Backtracking algorithms
-- Candidate-based search optimization
-- Two-dimensional array manipulation
-- DOM state synchronization
-- Step-by-step algorithm animation
-- Undo and redo implementation
-- Browser storage
-- Responsive interface design
-- Accessibility fundamentals
+* Recursive problem solving
+* Backtracking algorithms
+* Candidate-based search optimization
+* DOM state synchronization
+* Step-by-step algorithm visualization
+* Undo and redo implementation
+* Browser storage handling
+* Responsive UI design
+* Accessibility fundamentals
