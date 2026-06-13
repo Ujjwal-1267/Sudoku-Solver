@@ -12,6 +12,10 @@ After enabling GitHub Pages, the project will be available at:
 
 [Open Sudoku Solver](https://ujjwal-1267.github.io/Sudoku-Solver/)
 
+## Preview
+
+![Sudoku Solver Preview](./assets/preview.png)
+
 ## Features
 
 ### Solver and visualization
@@ -141,15 +145,6 @@ cd Sudoku-Solver
 3. Open `index.html` in a browser.
 
 You can also use the **Live Server** extension in VS Code.
-
-## Deploy with GitHub Pages
-
-1. Push the latest files to GitHub.
-2. Open the repository on GitHub.
-3. Go to **Settings → Pages**.
-4. Under **Build and deployment**, select **Deploy from a branch**.
-5. Choose the `main` branch and `/root` folder.
-6. Save the settings.
 
 ## What I Learned
 
