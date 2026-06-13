@@ -1,13 +1,10 @@
 # Sudoku Solver & Backtracking Visualizer
 
-A responsive, feature-rich Sudoku application built with **HTML, CSS, and vanilla JavaScript**. It can solve Sudoku puzzles instantly, visualize recursive backtracking step by step, validate boards, reveal hints, detect multiple solutions, and save progress locally.
+A responsive Sudoku application built with **HTML, CSS, and vanilla JavaScript**. It solves puzzles instantly or visualizes recursive backtracking with the active cell, candidate values, recursion depth, and a live step log.
 
 ## Live Demo
 
-Add your GitHub Pages link here:
-
-```text
-https://YOUR-USERNAME.github.io/Sudoku-Solver/
+https://github.com/Ujjwal-1267/Sudoku-Solver
 ```
 
 ## Preview
@@ -50,14 +47,20 @@ Add a screenshot at `assets/preview.png`, then uncomment:
 - Keyboard navigation
 - Mobile number pad
 
-### Persistence and sharing
+### Persistence
 
 - Automatic progress saving with `localStorage`
 - Saved progress restoration after refresh
-- Import an 81-character puzzle string
-- Export the current puzzle as a string
-- Share puzzles through a URL query parameter
 - Dark and light themes with saved preference
+
+### Backtracking panel
+
+- Current row and column
+- Value being attempted
+- Valid candidate values
+- Current recursion depth
+- Live placement and backtrack log
+- Placement/backtrack color legend
 
 ### Accessibility and interface
 
@@ -76,8 +79,6 @@ Add a screenshot at `assets/preview.png`, then uncomment:
 - Recursion
 - Backtracking
 - Local Storage
-- Clipboard API
-- URL Search Parameters
 
 ## Project Structure
 
@@ -105,19 +106,6 @@ The solver uses recursive backtracking:
 
 This project improves basic backtracking by choosing the empty cell with the fewest valid candidates. This reduces unnecessary recursive branches.
 
-## Puzzle String Format
-
-The import field accepts exactly 81 characters.
-
-- Use digits `1-9` for filled cells.
-- Use `0` or `.` for empty cells.
-
-Example:
-
-```text
-530070000600195000098000060800060003400803001700020006060000280000419005000080079
-```
-
 ## Keyboard Controls
 
 - Arrow keys: move between cells
@@ -133,7 +121,7 @@ No installation is required.
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/Sudoku-Solver.git
+git clone https://github.com/Ujjwal-1267/Sudoku-Solver
 ```
 
 2. Open the project folder.
@@ -141,28 +129,9 @@ git clone https://github.com/YOUR-USERNAME/Sudoku-Solver.git
 
 For a local development server in VS Code, you can also use the Live Server extension.
 
-## Deploy with GitHub Pages
+This site will be available at:
+https://github.com/Ujjwal-1267/Sudoku-Solver
 
-1. Push the project to GitHub.
-2. Open the repository.
-3. Go to **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**.
-5. Select the `main` branch and `/root`.
-6. Save.
-
-Your site will be available at:
-
-```text
-https://YOUR-USERNAME.github.io/Sudoku-Solver/
-```
-
-## Future Improvements
-
-- Generate completely new Sudoku boards dynamically
-- Pencil-mark candidate mode
-- Daily puzzle system
-- Player timer and scoring
-- Additional solving strategies such as naked singles and hidden singles
 
 ## What I Learned
 

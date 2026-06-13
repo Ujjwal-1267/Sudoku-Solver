@@ -28,7 +28,6 @@
   const $ = (selector) => document.querySelector(selector);
   const boardEl = $("#board");
   const messageEl = $("#message");
-  const actionText = $("#actionText");
   const placementCountEl = $("#placementCount");
   const backtrackCountEl = $("#backtrackCount");
   const totalStepCountEl = $("#totalStepCount");
@@ -36,6 +35,13 @@
   const hintCountEl = $("#hintCount");
   const progressBar = $("#progressBar");
   const progressText = $("#progressText");
+  const visualizerStatusEl = $("#visualizerStatus");
+  const visualizerCellEl = $("#visualizerCell");
+  const visualizerValueEl = $("#visualizerValue");
+  const visualizerDepthEl = $("#visualizerDepth");
+  const visualizerActionEl = $("#visualizerAction");
+  const candidateListEl = $("#candidateList");
+  const stepLogEl = $("#stepLog");
 
   const controls = {
     solve: $("#solveBtn"),
@@ -50,16 +56,12 @@
     redo: $("#redoBtn"),
     clear: $("#clearBtn"),
     newPuzzle: $("#newPuzzleBtn"),
-    import: $("#importBtn"),
-    export: $("#exportBtn"),
-    share: $("#shareBtn"),
     erase: $("#eraseBtn"),
     theme: $("#themeBtn")
   };
 
   const difficultySelect = $("#difficultySelect");
   const speedSelect = $("#speedSelect");
-  const puzzleStringEl = $("#puzzleString");
   const themeIcon = $("#themeIcon");
 
   let board = createEmptyBoard();
@@ -101,9 +103,6 @@
     );
   }
 
-  function boardToString(grid) {
-    return grid.flat().join("");
-  }
 
   function buildBoard() {
     boardEl.innerHTML = "";
@@ -242,12 +241,7 @@
     updateHistoryButtons();
     autoSave();
 
-    if (!options.silent) {
-      clearMessage();
-      actionText.textContent = value
-        ? `Placed ${value} at row ${r + 1}, column ${c + 1}.`
-        : `Cleared row ${r + 1}, column ${c + 1}.`;
-    }
+    if (!options.silent) clearMessage();
 
     detectManualCompletion();
   }
@@ -356,7 +350,7 @@
     const stats = { placements: 0, backtracks: 0 };
     const start = performance.now();
 
-    function backtrack() {
+    function backtrack(depth = 0) {
       const empty = getBestEmptyCell(grid);
       if (!empty) return true;
       if (empty.candidates.length === 0) return false;
@@ -366,16 +360,32 @@
       for (const num of candidates) {
         grid[r][c] = num;
         stats.placements++;
+
         if (recordSteps) {
-          steps.push({ type: "place", r, c, value: num });
+          steps.push({
+            type: "place",
+            r,
+            c,
+            value: num,
+            candidates: [...candidates],
+            depth
+          });
         }
 
-        if (backtrack()) return true;
+        if (backtrack(depth + 1)) return true;
 
         grid[r][c] = 0;
         stats.backtracks++;
+
         if (recordSteps) {
-          steps.push({ type: "remove", r, c, value: 0 });
+          steps.push({
+            type: "remove",
+            r,
+            c,
+            value: num,
+            candidates: [...candidates],
+            depth
+          });
         }
       }
 
@@ -415,6 +425,81 @@
     return count;
   }
 
+  function setVisualizerStatus(text, state = "") {
+    visualizerStatusEl.textContent = text;
+    visualizerStatusEl.className = "status-badge";
+    if (state) visualizerStatusEl.classList.add(state);
+  }
+
+  function renderCandidates(candidates = [], activeValue = null) {
+    candidateListEl.innerHTML = "";
+
+    if (!candidates.length) {
+      const empty = document.createElement("span");
+      empty.className = "candidate empty";
+      empty.textContent = "—";
+      candidateListEl.appendChild(empty);
+      return;
+    }
+
+    candidates.forEach((candidate) => {
+      const item = document.createElement("span");
+      item.className = "candidate";
+      item.textContent = candidate;
+
+      if (candidate === activeValue) {
+        item.classList.add("active");
+      }
+
+      candidateListEl.appendChild(item);
+    });
+  }
+
+  function resetVisualizer(statusText = "Idle", state = "") {
+    setVisualizerStatus(statusText, state);
+    visualizerCellEl.textContent = "—";
+    visualizerValueEl.textContent = "—";
+    visualizerDepthEl.textContent = "—";
+    visualizerActionEl.textContent = "Waiting";
+    renderCandidates();
+    stepLogEl.innerHTML = '<li class="empty-log">Press Visualize to begin.</li>';
+  }
+
+  function addStepToLog(step) {
+    if (stepLogEl.querySelector(".empty-log")) {
+      stepLogEl.innerHTML = "";
+    }
+
+    const item = document.createElement("li");
+    item.className = step.type;
+
+    if (step.type === "place") {
+      item.textContent =
+        `Place ${step.value} at R${step.r + 1}C${step.c + 1} · depth ${step.depth}`;
+    } else {
+      item.textContent =
+        `Remove ${step.value} from R${step.r + 1}C${step.c + 1} · backtrack`;
+    }
+
+    stepLogEl.prepend(item);
+
+    while (stepLogEl.children.length > 6) {
+      stepLogEl.lastElementChild.remove();
+    }
+  }
+
+  function updateVisualizer(step) {
+    setVisualizerStatus("Running", "running");
+    visualizerCellEl.textContent = `R${step.r + 1}C${step.c + 1}`;
+    visualizerValueEl.textContent = step.value;
+    visualizerDepthEl.textContent = step.depth;
+    visualizerActionEl.textContent =
+      step.type === "place" ? "Place and continue" : "Remove and go back";
+
+    renderCandidates(step.candidates, step.type === "place" ? step.value : null);
+    addStepToLog(step);
+  }
+
   function preparePuzzleAction() {
     const conflicts = findConflicts(board);
     allCells().forEach((cell) => cell.classList.remove("error"));
@@ -441,7 +526,6 @@
 
     if (!result.solved) {
       showMessage("This puzzle has no solution.", "error");
-      actionText.textContent = "The solver reached a dead end for every possible path.";
       return;
     }
 
@@ -454,7 +538,14 @@
     const solutionCount = countSolutions(originalBoard);
     const typeText = solutionCount === 1 ? "unique solution" : "multiple solutions";
     showMessage(`Solved successfully. This puzzle has a ${typeText}.`, "success");
-    actionText.textContent = "The backtracking algorithm completed the board.";
+    setVisualizerStatus("Solved", "solved");
+    visualizerCellEl.textContent = "—";
+    visualizerValueEl.textContent = "—";
+    visualizerDepthEl.textContent = "—";
+    visualizerActionEl.textContent = "Instant solve completed";
+    renderCandidates();
+    stepLogEl.innerHTML =
+      `<li class="place">${result.stats.placements} placements and ${result.stats.backtracks} backtracks.</li>`;
   }
 
   function renderSolvedBoard() {
@@ -498,8 +589,9 @@
     board = cloneBoard(animation.original);
     setAnimationControls(true);
     updateProgress(0, animation.steps.length);
+    resetVisualizer("Running", "running");
+    stepLogEl.innerHTML = '<li class="empty-log">Preparing the first step…</li>';
     showMessage("Backtracking visualization started.", "info");
-    actionText.textContent = "The solver is searching for the best empty cell.";
     playNextStep();
   }
 
@@ -513,7 +605,12 @@
       renderSolvedBoard();
       updateProgress(animation.steps.length, animation.steps.length);
       showMessage("Visualization completed.", "success");
-      actionText.textContent = "The puzzle is solved.";
+      setVisualizerStatus("Solved", "solved");
+      visualizerCellEl.textContent = "—";
+      visualizerValueEl.textContent = "—";
+      visualizerDepthEl.textContent = "—";
+      visualizerActionEl.textContent = "Puzzle solved";
+      renderCandidates();
       autoSave();
       return;
     }
@@ -525,16 +622,13 @@
     if (step.type === "place") {
       board[step.r][step.c] = step.value;
       classes.set(key, ["trying"]);
-      actionText.textContent =
-        `Trying ${step.value} at row ${step.r + 1}, column ${step.c + 1}.`;
     } else {
       board[step.r][step.c] = 0;
       classes.set(key, ["backtracking"]);
-      actionText.textContent =
-        `Dead end found. Backtracking from row ${step.r + 1}, column ${step.c + 1}.`;
     }
 
     renderBoard(classes);
+    updateVisualizer(step);
     animation.index++;
     updateProgress(animation.index, animation.steps.length);
 
@@ -550,9 +644,12 @@
 
     if (animation.paused) {
       clearTimeout(animation.timer);
+      setVisualizerStatus("Paused", "paused");
+      visualizerActionEl.textContent = "Visualization paused";
       showMessage("Visualization paused.", "info");
-      actionText.textContent = "Animation paused.";
     } else {
+      setVisualizerStatus("Running", "running");
+      visualizerActionEl.textContent = "Continuing search";
       showMessage("Visualization resumed.", "info");
       playNextStep();
     }
@@ -575,8 +672,13 @@
     updateProgress(0, 0);
 
     if (showNotice) {
+      setVisualizerStatus("Stopped", "stopped");
+      visualizerCellEl.textContent = "—";
+      visualizerValueEl.textContent = "—";
+      visualizerDepthEl.textContent = "—";
+      visualizerActionEl.textContent = "Original board restored";
+      renderCandidates();
       showMessage("Visualization stopped. Original state restored.", "info");
-      actionText.textContent = "Animation stopped.";
     }
   }
 
@@ -588,7 +690,6 @@
     controls.validate.disabled = running;
     controls.reset.disabled = running;
     controls.newPuzzle.disabled = running;
-    controls.import.disabled = running;
     controls.undo.disabled = running || undoStack.length === 0;
     controls.redo.disabled = running || redoStack.length === 0;
     controls.pause.disabled = !running;
@@ -654,7 +755,6 @@
       `Hint: row ${choice.r + 1}, column ${choice.c + 1} is ${value}.`,
       "info"
     );
-    actionText.textContent = "One correct value was revealed.";
     autoSave();
   }
 
@@ -725,7 +825,8 @@
     const result = solveGrid(originalBoard);
     if (result.solved && boardsEqual(board, result.grid)) {
       showMessage("Excellent — you completed the puzzle correctly!", "success");
-      actionText.textContent = "Puzzle completed manually.";
+      setVisualizerStatus("Completed", "solved");
+      visualizerActionEl.textContent = "Solved manually";
     }
   }
 
@@ -743,7 +844,7 @@
     renderBoard();
     updateHistoryButtons();
     showMessage(message, "success");
-    actionText.textContent = "The puzzle is ready.";
+    resetVisualizer();
     autoSave();
   }
 
@@ -766,7 +867,7 @@
     renderBoard();
     updateHistoryButtons();
     showMessage("Puzzle reset.", "info");
-    actionText.textContent = "Returned to the original clues.";
+    resetVisualizer();
     autoSave();
   }
 
@@ -780,12 +881,11 @@
     hintCountEl.textContent = "0";
     undoStack = [];
     redoStack = [];
-    puzzleStringEl.value = "";
     resetStats();
     renderBoard();
     updateHistoryButtons();
     showMessage("Board cleared.", "info");
-    actionText.textContent = "Enter a puzzle or load a preset.";
+    resetVisualizer();
     autoSave();
   }
 
@@ -799,7 +899,6 @@
     renderBoard();
     updateHistoryButtons();
     autoSave();
-    actionText.textContent = "Last move undone.";
   }
 
   function redo() {
@@ -812,52 +911,11 @@
     renderBoard();
     updateHistoryButtons();
     autoSave();
-    actionText.textContent = "Move restored.";
   }
 
   function updateHistoryButtons() {
     controls.undo.disabled = animation.running || undoStack.length === 0;
     controls.redo.disabled = animation.running || redoStack.length === 0;
-  }
-
-  function importPuzzle() {
-    const grid = stringToBoard(puzzleStringEl.value);
-
-    if (!grid) {
-      showMessage("Enter exactly 81 digits using 0 or . for empty cells.", "error");
-      return;
-    }
-
-    if (findConflicts(grid).size > 0) {
-      showMessage("The imported puzzle contains conflicts.", "error");
-      return;
-    }
-
-    loadPuzzle(grid, "Puzzle imported.");
-  }
-
-  async function copyText(text, successMessage) {
-    try {
-      await navigator.clipboard.writeText(text);
-      showMessage(successMessage, "success");
-    } catch {
-      puzzleStringEl.value = text;
-      puzzleStringEl.select();
-      document.execCommand("copy");
-      showMessage(successMessage, "success");
-    }
-  }
-
-  function exportPuzzle() {
-    const value = boardToString(board);
-    puzzleStringEl.value = value;
-    copyText(value, "Puzzle string copied.");
-  }
-
-  function sharePuzzle() {
-    const url = new URL(window.location.href);
-    url.searchParams.set("puzzle", boardToString(originalBoard));
-    copyText(url.toString(), "Share URL copied.");
   }
 
   function applyTheme(theme) {
@@ -882,15 +940,6 @@
   }
 
   function restoreSavedState() {
-    const urlPuzzle = new URL(window.location.href).searchParams.get("puzzle");
-    if (urlPuzzle) {
-      const grid = stringToBoard(urlPuzzle);
-      if (grid && findConflicts(grid).size === 0) {
-        loadPuzzle(grid, "Shared puzzle loaded.");
-        return true;
-      }
-    }
-
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
       if (!saved?.board || !saved?.originalBoard) return false;
@@ -902,7 +951,7 @@
       hintCountEl.textContent = hintsUsed;
       renderBoard();
       showMessage("Saved progress restored.", "info");
-      actionText.textContent = "Your previous board was restored.";
+      resetVisualizer();
       return true;
     } catch {
       return false;
@@ -935,9 +984,6 @@
   controls.undo.addEventListener("click", undo);
   controls.redo.addEventListener("click", redo);
   controls.newPuzzle.addEventListener("click", loadRandomPuzzle);
-  controls.import.addEventListener("click", importPuzzle);
-  controls.export.addEventListener("click", exportPuzzle);
-  controls.share.addEventListener("click", sharePuzzle);
   controls.theme.addEventListener("click", toggleTheme);
 
   controls.erase.addEventListener("click", () => {
@@ -971,6 +1017,7 @@
     buildBoard();
     applyTheme(localStorage.getItem(THEME_KEY) || "dark");
     resetStats();
+    resetVisualizer();
 
     if (!restoreSavedState()) {
       loadRandomPuzzle();
