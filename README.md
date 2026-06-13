@@ -10,7 +10,7 @@ A responsive Sudoku application built with HTML, CSS, and vanilla JavaScript. It
 
 After enabling GitHub Pages, the project will be available at:
 
-[Open Sudoku Solver](https://Ujjwal-1267.github.io/Sudoku-Solver/)
+[Open Sudoku Solver](https://ujjwal-1267.github.io/Sudoku-Solver/)
 
 ## Features
 
