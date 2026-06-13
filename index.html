@@ -1,52 +1,143 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Sudoku Solver</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="An advanced Sudoku solver and backtracking visualizer built with vanilla JavaScript.">
+  <title>Sudoku Solver & Backtracking Visualizer</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <main class="app">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Algorithm Visualizer</p>
+        <h1>Sudoku Solver</h1>
+        <p class="subtitle">Solve, validate, visualize, import, export, and practise Sudoku.</p>
+      </div>
 
-  <div class="container">
-    <header>
-      <h1>Sudoku Solver</h1>
-      <p class="subtitle">Enter your puzzle and hit Solve</p>
+      <button id="themeBtn" class="icon-btn" type="button" aria-label="Switch theme" title="Switch theme">
+        <span id="themeIcon" aria-hidden="true">☀</span>
+      </button>
     </header>
 
-    <!-- Stats bar -->
-    <div class="stats-bar" id="statsBar">
-      <div class="stat">
-        <span class="stat-label">Placements</span>
-        <span class="stat-value" id="stepCount">—</span>
+    <section class="toolbar card" aria-label="Puzzle settings">
+      <label>
+        <span>Difficulty</span>
+        <select id="difficultySelect">
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+          <option value="expert">Expert</option>
+        </select>
+      </label>
+
+      <button id="newPuzzleBtn" class="btn btn-secondary" type="button">New Puzzle</button>
+
+      <label>
+        <span>Animation speed</span>
+        <select id="speedSelect">
+          <option value="250">Slow</option>
+          <option value="80" selected>Medium</option>
+          <option value="25">Fast</option>
+          <option value="5">Very fast</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="stats card" aria-label="Solver statistics">
+      <div><span>Placements</span><strong id="placementCount">—</strong></div>
+      <div><span>Backtracks</span><strong id="backtrackCount">—</strong></div>
+      <div><span>Total steps</span><strong id="totalStepCount">—</strong></div>
+      <div><span>Algorithm time</span><strong id="executionTime">—</strong></div>
+      <div><span>Hints used</span><strong id="hintCount">0</strong></div>
+    </section>
+
+    <section class="workspace">
+      <div class="board-panel">
+        <div
+          id="board"
+          class="board"
+          role="grid"
+          aria-label="Sudoku board"
+        ></div>
+
+        <div class="progress-wrap" aria-label="Animation progress">
+          <div class="progress-track">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+          <span id="progressText">0 / 0</span>
+        </div>
+
+        <div class="number-pad" aria-label="Number pad">
+          <button type="button" data-number="1">1</button>
+          <button type="button" data-number="2">2</button>
+          <button type="button" data-number="3">3</button>
+          <button type="button" data-number="4">4</button>
+          <button type="button" data-number="5">5</button>
+          <button type="button" data-number="6">6</button>
+          <button type="button" data-number="7">7</button>
+          <button type="button" data-number="8">8</button>
+          <button type="button" data-number="9">9</button>
+          <button id="eraseBtn" class="erase-key" type="button">Erase</button>
+        </div>
       </div>
-      <div class="stat-divider"></div>
-      <div class="stat">
-        <span class="stat-label">Time</span>
-        <span class="stat-value" id="execTime">—</span>
-      </div>
-    </div>
 
-    <!-- Board -->
-    <div class="board" id="board"></div>
+      <aside class="side-panel">
+        <section class="card">
+          <h2>Solver controls</h2>
+          <div class="button-grid">
+            <button id="solveBtn" class="btn btn-primary" type="button">Solve instantly</button>
+            <button id="animateBtn" class="btn btn-accent" type="button">Visualize</button>
+            <button id="pauseBtn" class="btn btn-secondary" type="button" disabled>Pause</button>
+            <button id="stopBtn" class="btn btn-danger" type="button" disabled>Stop</button>
+          </div>
+        </section>
 
-    <!-- Controls row 1 -->
-    <div class="controls">
-      <button id="solveBtn"   class="btn btn-primary">▶ Solve</button>
-      <button id="animateBtn" class="btn btn-primary btn-animate">⏱ Animate</button>
-      <button id="hintBtn"    class="btn btn-secondary">💡 Hint</button>
-    </div>
+        <section class="card">
+          <h2>Puzzle tools</h2>
+          <div class="button-grid">
+            <button id="hintBtn" class="btn btn-secondary" type="button">Hint</button>
+            <button id="checkBtn" class="btn btn-secondary" type="button">Check progress</button>
+            <button id="validateBtn" class="btn btn-secondary" type="button">Validate</button>
+            <button id="resetBtn" class="btn btn-secondary" type="button">Reset puzzle</button>
+            <button id="undoBtn" class="btn btn-secondary" type="button" disabled>Undo</button>
+            <button id="redoBtn" class="btn btn-secondary" type="button" disabled>Redo</button>
+            <button id="clearBtn" class="btn btn-danger" type="button">Clear board</button>
+          </div>
+        </section>
 
-    <!-- Controls row 2 -->
-    <div class="controls controls-secondary">
-      <button id="exampleBtn" class="btn btn-ghost">Load Example</button>
-      <button id="resetBtn"   class="btn btn-ghost">Reset Puzzle</button>
-      <button id="clearBtn"   class="btn btn-ghost">Clear All</button>
-      <button id="validateBtn" class="btn btn-ghost">Validate</button>
-    </div>
+        <section class="card">
+          <h2>Import, export & share</h2>
+          <textarea
+            id="puzzleString"
+            maxlength="81"
+            placeholder="Paste an 81-character puzzle string. Use 0 or . for empty cells."
+            aria-label="Puzzle string"
+          ></textarea>
+          <div class="button-grid">
+            <button id="importBtn" class="btn btn-secondary" type="button">Import</button>
+            <button id="exportBtn" class="btn btn-secondary" type="button">Copy puzzle</button>
+            <button id="shareBtn" class="btn btn-secondary" type="button">Copy share URL</button>
+          </div>
+        </section>
 
-    <div id="message" class="message hidden"></div>
-  </div>
+        <section class="card explanation">
+          <h2>Current action</h2>
+          <p id="actionText">Choose a puzzle or enter your own values.</p>
+          <details>
+            <summary>How backtracking works</summary>
+            <p>
+              The solver finds an empty cell, tries a legal number, and continues recursively.
+              When it reaches a dead end, it removes the last choice and tries another number.
+            </p>
+          </details>
+        </section>
+      </aside>
+    </section>
+
+    <div id="message" class="message hidden" role="status" aria-live="polite"></div>
+  </main>
 
   <script src="script.js"></script>
 </body>

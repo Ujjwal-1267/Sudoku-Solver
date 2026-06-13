@@ -1,600 +1,984 @@
-/* ═══════════════════════════════════════════════════════
-   Sudoku Solver — v2.1  (Bug Fix Release)
-   Fixes:
-     #1  Reset Puzzle now snapshots BEFORE solving, not after
-     #2  Editing any cell after solve invalidates the snapshot
-     #3  Clear All cancels animation even while it is running
-     #4  Solve / Animate reject a completely empty board
-     #5  Validate distinguishes an empty board from a valid one
-     #6  Animated solve shows algorithm time, not animation time
-     #7  Stats label renamed "Placements" (forward-placements only)
-     #8  renderBoardFull resets every cell before writing values
-     #9  aria-label added to every cell for screen readers
-   ═══════════════════════════════════════════════════════ */
+(() => {
+  "use strict";
 
-// ── DOM Refs ──────────────────────────────────────────
-const boardEl     = document.getElementById('board');
-const solveBtn    = document.getElementById('solveBtn');
-const animateBtn  = document.getElementById('animateBtn');
-const hintBtn     = document.getElementById('hintBtn');
-const exampleBtn  = document.getElementById('exampleBtn');
-const resetBtn    = document.getElementById('resetBtn');
-const clearBtn    = document.getElementById('clearBtn');
-const validateBtn = document.getElementById('validateBtn');
-const messageEl   = document.getElementById('message');
-const stepCountEl = document.getElementById('stepCount');
-const execTimeEl  = document.getElementById('execTime');
+  const SIZE = 9;
+  const BOX = 3;
+  const STORAGE_KEY = "sudoku-final-state-v1";
+  const THEME_KEY = "sudoku-theme";
 
-// ── State ─────────────────────────────────────────────
-let board          = Array.from({ length: 9 }, () => Array(9).fill(0));
-// FIX #1 + #2: snapshot is taken at the moment Solve/Animate is pressed
-// (before the algorithm runs), and is cleared whenever the user edits a cell
-// after a solve so that old snapshots never outlive the current puzzle.
-let puzzleSnapshot = null;   // captured just before solving
-let snapshotStale  = false;  // true once the user edits after a solve
-let isSolving      = false;  // lock during animation
-let animHandle     = null;   // setTimeout handle — needed for FIX #3
+  const PUZZLES = {
+    easy: [
+      "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+      "000260701680070090190004500820100040004602900050003028009300074040050036703018000"
+    ],
+    medium: [
+      "000000907000420180000705026100904000050000040000507009920108000034059000507000000",
+      "030000080009000500007509200700105008020090030900402001004207100002000800070000090"
+    ],
+    hard: [
+      "000000000000003085001020000000507000004000100090000000500000073002010000000040009",
+      "005300000800000020070010500400005300010070006003200080060500009004000030000009700"
+    ],
+    expert: [
+      "000000010400000000020000000000050407008000300001090000300400200050100000000806000",
+      "100007090030020008009600500005300900010080002600004000300000010040000007007000300"
+    ]
+  };
 
-// ── Example Puzzles ───────────────────────────────────
-const EXAMPLES = [
-  // Easy
-  [
-    [5,3,0, 0,7,0, 0,0,0],
-    [6,0,0, 1,9,5, 0,0,0],
-    [0,9,8, 0,0,0, 0,6,0],
-    [8,0,0, 0,6,0, 0,0,3],
-    [4,0,0, 8,0,3, 0,0,1],
-    [7,0,0, 0,2,0, 0,0,6],
-    [0,6,0, 0,0,0, 2,8,0],
-    [0,0,0, 4,1,9, 0,0,5],
-    [0,0,0, 0,8,0, 0,7,9],
-  ],
-  // Medium
-  [
-    [0,0,0, 2,6,0, 7,0,1],
-    [6,8,0, 0,7,0, 0,9,0],
-    [1,9,0, 0,0,4, 5,0,0],
-    [8,2,0, 1,0,0, 0,4,0],
-    [0,0,4, 6,0,2, 9,0,0],
-    [0,5,0, 0,0,3, 0,2,8],
-    [0,0,9, 3,0,0, 0,7,4],
-    [0,4,0, 0,5,0, 0,3,6],
-    [7,0,3, 0,1,8, 0,0,0],
-  ],
-];
+  const $ = (selector) => document.querySelector(selector);
+  const boardEl = $("#board");
+  const messageEl = $("#message");
+  const actionText = $("#actionText");
+  const placementCountEl = $("#placementCount");
+  const backtrackCountEl = $("#backtrackCount");
+  const totalStepCountEl = $("#totalStepCount");
+  const executionTimeEl = $("#executionTime");
+  const hintCountEl = $("#hintCount");
+  const progressBar = $("#progressBar");
+  const progressText = $("#progressText");
 
-let exampleIndex = 0;
+  const controls = {
+    solve: $("#solveBtn"),
+    animate: $("#animateBtn"),
+    pause: $("#pauseBtn"),
+    stop: $("#stopBtn"),
+    hint: $("#hintBtn"),
+    check: $("#checkBtn"),
+    validate: $("#validateBtn"),
+    reset: $("#resetBtn"),
+    undo: $("#undoBtn"),
+    redo: $("#redoBtn"),
+    clear: $("#clearBtn"),
+    newPuzzle: $("#newPuzzleBtn"),
+    import: $("#importBtn"),
+    export: $("#exportBtn"),
+    share: $("#shareBtn"),
+    erase: $("#eraseBtn"),
+    theme: $("#themeBtn")
+  };
 
-// ── Build Grid DOM ────────────────────────────────────
-function buildBoard() {
-  boardEl.innerHTML = '';
-  for (let r = 0; r < 9; r++) {
-    for (let c = 0; c < 9; c++) {
-      const input = document.createElement('input');
-      input.type        = 'text';
-      input.inputMode   = 'numeric';
-      input.maxLength   = 1;
-      // FIX #9: descriptive aria-label for screen readers
-      input.setAttribute('aria-label', `Row ${r + 1}, Column ${c + 1}`);
-      input.classList.add('cell');
-      input.dataset.row = r;
-      input.dataset.col = c;
+  const difficultySelect = $("#difficultySelect");
+  const speedSelect = $("#speedSelect");
+  const puzzleStringEl = $("#puzzleString");
+  const themeIcon = $("#themeIcon");
 
-      input.addEventListener('input',   onCellInput);
-      input.addEventListener('keydown', onCellKeydown);
-      input.addEventListener('focus',   onCellFocus);
-      input.addEventListener('blur',    onCellBlur);
+  let board = createEmptyBoard();
+  let originalBoard = createEmptyBoard();
+  let solutionBoard = null;
+  let selected = null;
+  let hintsUsed = 0;
+  let undoStack = [];
+  let redoStack = [];
+  let animation = {
+    running: false,
+    paused: false,
+    stopped: false,
+    steps: [],
+    index: 0,
+    timer: null,
+    original: null,
+    finalBoard: null
+  };
 
-      boardEl.appendChild(input);
-    }
-  }
-}
-
-// ── Cell Input ────────────────────────────────────────
-function onCellInput(e) {
-  if (isSolving) return;
-  const input = e.target;
-  const val   = input.value;
-  const r     = +input.dataset.row;
-  const c     = +input.dataset.col;
-
-  if (/^[1-9]$/.test(val)) {
-    board[r][c] = +val;
-    input.classList.remove('error', 'solved', 'hint', 'animating');
-    input.classList.add('given');
-  } else {
-    input.value = '';
-    board[r][c] = 0;
-    input.classList.remove('given', 'error', 'solved', 'hint', 'animating');
+  function createEmptyBoard() {
+    return Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
   }
 
-  // FIX #2: editing after a solve means the old snapshot is now wrong;
-  // mark it stale so the next Solve press captures a fresh snapshot.
-  snapshotStale = true;
+  function cloneBoard(grid) {
+    return grid.map((row) => [...row]);
+  }
 
-  clearMessage();
-  resetStats();
-}
+  function boardsEqual(a, b) {
+    return a.every((row, r) => row.every((value, c) => value === b[r][c]));
+  }
 
-// ── Arrow Key Navigation ──────────────────────────────
-function onCellKeydown(e) {
-  if (isSolving) { e.preventDefault(); return; }
-  const r = +e.target.dataset.row;
-  const c = +e.target.dataset.col;
-  let nr = r, nc = c;
+  function stringToBoard(value) {
+    const cleaned = value.replace(/\s/g, "").replace(/\./g, "0");
+    if (!/^[0-9]{81}$/.test(cleaned)) return null;
 
-  if      (e.key === 'ArrowUp')    nr = r - 1;
-  else if (e.key === 'ArrowDown')  nr = r + 1;
-  else if (e.key === 'ArrowLeft')  nc = c - 1;
-  else if (e.key === 'ArrowRight') nc = c + 1;
-  else if (e.key === 'Backspace' || e.key === 'Delete') {
-    e.target.value = '';
-    board[r][c] = 0;
-    e.target.classList.remove('given', 'solved', 'hint', 'error', 'animating');
-    // FIX #2: deletion also counts as editing
-    snapshotStale = true;
-    clearMessage();
-    resetStats();
-    return;
-  } else { return; }
+    return Array.from({ length: SIZE }, (_, r) =>
+      Array.from({ length: SIZE }, (_, c) => Number(cleaned[r * SIZE + c]))
+    );
+  }
 
-  nr = Math.max(0, Math.min(8, nr));
-  nc = Math.max(0, Math.min(8, nc));
-  e.preventDefault();
-  getCell(nr, nc).focus();
-}
+  function boardToString(grid) {
+    return grid.flat().join("");
+  }
 
-// ── Focus / Blur → Highlight ──────────────────────────
-function onCellFocus(e) {
-  clearMessage();
-  applyHighlights(+e.target.dataset.row, +e.target.dataset.col);
-}
+  function buildBoard() {
+    boardEl.innerHTML = "";
 
-function onCellBlur() {
-  clearHighlights();
-}
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const input = document.createElement("input");
+        input.className = "cell";
+        input.type = "text";
+        input.inputMode = "numeric";
+        input.maxLength = 1;
+        input.dataset.row = r;
+        input.dataset.col = c;
+        input.setAttribute("role", "gridcell");
+        input.setAttribute("aria-label", `Row ${r + 1}, column ${c + 1}`);
 
-function applyHighlights(row, col) {
-  clearHighlights();
-  const focusedVal = board[row][col];
-  const boxR = Math.floor(row / 3) * 3;
-  const boxC = Math.floor(col / 3) * 3;
+        input.addEventListener("focus", () => selectCell(r, c));
+        input.addEventListener("click", () => selectCell(r, c));
+        input.addEventListener("input", handleCellInput);
+        input.addEventListener("keydown", handleCellKeydown);
 
-  allCells().forEach(cell => {
-    const r = +cell.dataset.row;
-    const c = +cell.dataset.col;
-    if (r === row && c === col) return;
-
-    const sameBox   = r >= boxR && r < boxR+3 && c >= boxC && c < boxC+3;
-    const sameRC    = r === row || c === col;
-    const sameDigit = focusedVal !== 0 && board[r][c] === focusedVal;
-
-    if      (sameDigit) cell.classList.add('hl-same-digit');
-    else if (sameBox)   cell.classList.add('hl-box');
-    else if (sameRC)    cell.classList.add('hl-rc');
-  });
-}
-
-function clearHighlights() {
-  allCells().forEach(cell =>
-    cell.classList.remove('hl-rc', 'hl-box', 'hl-same-digit')
-  );
-}
-
-// ── DOM / Board Helpers ───────────────────────────────
-function getCell(r, c) {
-  return boardEl.querySelector(`[data-row="${r}"][data-col="${c}"]`);
-}
-
-function allCells() {
-  return boardEl.querySelectorAll('.cell');
-}
-
-function readBoardFromDOM() {
-  for (let r = 0; r < 9; r++)
-    for (let c = 0; c < 9; c++) {
-      const val = getCell(r, c).value;
-      board[r][c] = /^[1-9]$/.test(val) ? +val : 0;
-    }
-}
-
-// FIX #8: reset every cell first, then write values — no leftover state.
-function renderBoardFull(solvedSet) {
-  for (let r = 0; r < 9; r++) {
-    for (let c = 0; c < 9; c++) {
-      const cell = getCell(r, c);
-      const val  = board[r][c];
-
-      // Always reset display state before applying new one
-      cell.classList.remove('solved', 'animating', 'error', 'hint');
-
-      if (val !== 0) {
-        cell.value = val;
-        if (solvedSet && solvedSet.has(`${r},${c}`)) {
-          cell.classList.remove('given');
-          cell.classList.add('solved');
-        }
-        // cells not in solvedSet keep their existing 'given' class
-      } else {
-        // explicitly clear any cells that became empty (shouldn't happen
-        // in normal flow, but makes the function safe to call anytime)
-        cell.value = '';
-        cell.classList.remove('given');
+        boardEl.appendChild(input);
       }
     }
   }
-}
 
-// ── Validation ────────────────────────────────────────
-function isValidPlacement(grid, row, col, num) {
-  for (let c = 0; c < 9; c++) if (grid[row][c] === num) return false;
-  for (let r = 0; r < 9; r++) if (grid[r][col] === num) return false;
-  const br = Math.floor(row/3)*3, bc = Math.floor(col/3)*3;
-  for (let r = br; r < br+3; r++)
-    for (let c = bc; c < bc+3; c++)
-      if (grid[r][c] === num) return false;
-  return true;
-}
-
-function getBoardErrors() {
-  const errors = new Set();
-  for (let r = 0; r < 9; r++)
-    for (let c = 0; c < 9; c++) {
-      const num = board[r][c];
-      if (num === 0) continue;
-      board[r][c] = 0;
-      if (!isValidPlacement(board, r, c, num)) errors.add(`${r},${c}`);
-      board[r][c] = num;
-    }
-  return errors;
-}
-
-function highlightErrors(errorSet) {
-  allCells().forEach(cell => {
-    const key = `${cell.dataset.row},${cell.dataset.col}`;
-    errorSet.has(key) ? cell.classList.add('error') : cell.classList.remove('error');
-  });
-}
-
-// FIX #4: returns true if the board has no filled cells at all
-function isBoardEmpty() {
-  return board.every(row => row.every(v => v === 0));
-}
-
-// ── Backtracking Solver ───────────────────────────────
-function solveWithSteps(grid) {
-  const steps = [];
-  function bt() {
-    for (let r = 0; r < 9; r++)
-      for (let c = 0; c < 9; c++)
-        if (grid[r][c] === 0) {
-          for (let num = 1; num <= 9; num++) {
-            if (isValidPlacement(grid, r, c, num)) {
-              grid[r][c] = num;
-              steps.push({ r, c, val: num, backtrack: false });
-              if (bt()) return true;
-              steps.push({ r, c, val: 0, backtrack: true });
-              grid[r][c] = 0;
-            }
-          }
-          return false;
-        }
-    return true;
-  }
-  const solved = bt();
-  return { solved, steps };
-}
-
-// ── Snapshot helper ───────────────────────────────────
-// FIX #1: always capture snapshot immediately before solving,
-// using the current board state (not after the algorithm mutates it).
-function captureSnapshot() {
-  puzzleSnapshot = deepCopy(board);
-  snapshotStale  = false;
-}
-
-// ── Solve (instant) ───────────────────────────────────
-solveBtn.addEventListener('click', () => {
-  if (isSolving) return;
-  readBoardFromDOM();
-
-  // FIX #4: reject empty board
-  if (isBoardEmpty()) {
-    showMessage('Enter some numbers first.', 'info');
-    return;
+  function getCell(r, c) {
+    return boardEl.querySelector(`[data-row="${r}"][data-col="${c}"]`);
   }
 
-  const errors = getBoardErrors();
-  if (errors.size > 0) {
-    highlightErrors(errors);
-    showMessage('Fix the highlighted conflicts first.', 'error');
-    return;
+  function allCells() {
+    return [...boardEl.querySelectorAll(".cell")];
   }
 
-  // FIX #1 + #2: take snapshot now, before mutating board
-  if (!puzzleSnapshot || snapshotStale) captureSnapshot();
-
-  const emptyCells = emptySet();
-  const gridCopy   = deepCopy(board);
-
-  // FIX #6: measure only algorithm time, not UI time
-  const t0 = performance.now();
-  const { solved, steps } = solveWithSteps(gridCopy);
-  const algoMs = (performance.now() - t0).toFixed(2);
-
-  if (solved) {
-    board = gridCopy;
-    renderBoardFull(emptyCells);
-    // FIX #7: label is "Placements" in HTML; count only forward placements
-    updateStats(steps.filter(s => !s.backtrack).length, algoMs + ' ms');
-    showMessage('Solved!', 'success');
-  } else {
-    showMessage('No solution exists for this puzzle.', 'error');
-  }
-});
-
-// ── Solve (animated) ─────────────────────────────────
-animateBtn.addEventListener('click', () => {
-  if (isSolving) return;
-  readBoardFromDOM();
-
-  // FIX #4: reject empty board
-  if (isBoardEmpty()) {
-    showMessage('Enter some numbers first.', 'info');
-    return;
+  function selectCell(r, c) {
+    selected = { r, c };
+    applyHighlights();
   }
 
-  const errors = getBoardErrors();
-  if (errors.size > 0) {
-    highlightErrors(errors);
-    showMessage('Fix the highlighted conflicts first.', 'error');
-    return;
+  function applyHighlights() {
+    allCells().forEach((cell) => {
+      cell.classList.remove("selected", "hl-line", "hl-box", "hl-same");
+    });
+
+    if (!selected) return;
+
+    const { r: sr, c: sc } = selected;
+    const selectedValue = board[sr][sc];
+    const boxRow = Math.floor(sr / BOX) * BOX;
+    const boxCol = Math.floor(sc / BOX) * BOX;
+
+    allCells().forEach((cell) => {
+      const r = Number(cell.dataset.row);
+      const c = Number(cell.dataset.col);
+
+      if (r === sr && c === sc) {
+        cell.classList.add("selected");
+        return;
+      }
+
+      if (selectedValue !== 0 && board[r][c] === selectedValue) {
+        cell.classList.add("hl-same");
+      } else if (
+        r >= boxRow && r < boxRow + BOX &&
+        c >= boxCol && c < boxCol + BOX
+      ) {
+        cell.classList.add("hl-box");
+      } else if (r === sr || c === sc) {
+        cell.classList.add("hl-line");
+      }
+    });
   }
 
-  // FIX #1 + #2: snapshot before solving
-  if (!puzzleSnapshot || snapshotStale) captureSnapshot();
+  function handleCellInput(event) {
+    if (animation.running) return;
 
-  const emptyCells = emptySet();
-  const gridCopy   = deepCopy(board);
+    const cell = event.target;
+    const r = Number(cell.dataset.row);
+    const c = Number(cell.dataset.col);
 
-  // FIX #6: run algorithm synchronously first to measure pure algorithm time;
-  // the animation is just replaying the recorded steps — it is UI, not compute.
-  const t0 = performance.now();
-  const { solved, steps } = solveWithSteps(gridCopy);
-  const algoMs = (performance.now() - t0).toFixed(2);
-
-  if (!solved) {
-    showMessage('No solution exists for this puzzle.', 'error');
-    return;
-  }
-
-  isSolving = true;
-  // FIX #3: keep Clear enabled during animation by NOT disabling it
-  setButtonsDisabled(true);
-  clearBtn.disabled = false;   // always interruptible
-
-  showMessage('Solving…', 'info');
-  // FIX #6: show real algorithm time immediately, before animation starts
-  // FIX #7: show placement count immediately too
-  updateStats(steps.filter(s => !s.backtrack).length, algoMs + ' ms');
-
-  let placementsDone = 0;
-  const DELAY = 18;
-
-  function playStep(i) {
-    if (i >= steps.length) {
-      board = gridCopy;
-      emptyCells.forEach(key => {
-        const [r, c] = key.split(',').map(Number);
-        const cell = getCell(r, c);
-        cell.classList.remove('animating');
-        cell.classList.add('solved');
-      });
-      showMessage('Solved!', 'success');
-      isSolving = false;
-      setButtonsDisabled(false);
+    if (originalBoard[r][c] !== 0) {
+      cell.value = originalBoard[r][c];
       return;
     }
 
-    const { r, c, val, backtrack } = steps[i];
-    const cell = getCell(r, c);
+    const value = /^[1-9]$/.test(cell.value) ? Number(cell.value) : 0;
+    setUserValue(r, c, value);
+  }
 
-    if (emptyCells.has(`${r},${c}`)) {
-      if (backtrack) {
-        cell.value = '';
-        cell.classList.remove('animating');
-      } else {
-        cell.value = val;
-        cell.classList.add('animating');
-        placementsDone++;
-        stepCountEl.textContent = placementsDone;
+  function handleCellKeydown(event) {
+    const r = Number(event.target.dataset.row);
+    const c = Number(event.target.dataset.col);
+
+    const moves = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1]
+    };
+
+    if (moves[event.key]) {
+      event.preventDefault();
+      const [dr, dc] = moves[event.key];
+      const nr = Math.max(0, Math.min(8, r + dr));
+      const nc = Math.max(0, Math.min(8, c + dc));
+      getCell(nr, nc).focus();
+      return;
+    }
+
+    if (event.key === "Backspace" || event.key === "Delete" || event.key === "0") {
+      event.preventDefault();
+      setUserValue(r, c, 0);
+      return;
+    }
+
+    if (/^[1-9]$/.test(event.key)) {
+      event.preventDefault();
+      setUserValue(r, c, Number(event.key));
+    }
+  }
+
+  function setUserValue(r, c, value, options = {}) {
+    if (animation.running || originalBoard[r][c] !== 0) return;
+
+    const previous = board[r][c];
+    if (previous === value) return;
+
+    if (!options.skipHistory) {
+      undoStack.push({ r, c, from: previous, to: value });
+      redoStack = [];
+    }
+
+    board[r][c] = value;
+    solutionBoard = null;
+    renderBoard();
+    updateHistoryButtons();
+    autoSave();
+
+    if (!options.silent) {
+      clearMessage();
+      actionText.textContent = value
+        ? `Placed ${value} at row ${r + 1}, column ${c + 1}.`
+        : `Cleared row ${r + 1}, column ${c + 1}.`;
+    }
+
+    detectManualCompletion();
+  }
+
+  function renderBoard(extraClasses = new Map()) {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const cell = getCell(r, c);
+        const value = board[r][c];
+        const key = `${r},${c}`;
+
+        cell.value = value || "";
+        cell.readOnly = originalBoard[r][c] !== 0 || animation.running;
+        cell.classList.remove(
+          "given", "user", "solved", "hint", "trying",
+          "backtracking", "error"
+        );
+
+        if (originalBoard[r][c] !== 0) {
+          cell.classList.add("given");
+        } else if (value !== 0) {
+          cell.classList.add("user");
+        }
+
+        const classes = extraClasses.get(key) || [];
+        classes.forEach((name) => cell.classList.add(name));
       }
     }
 
-    animHandle = setTimeout(() => playStep(i + 1), DELAY);
+    applyHighlights();
   }
 
-  playStep(0);
-});
+  function isValidPlacement(grid, row, col, num) {
+    for (let i = 0; i < SIZE; i++) {
+      if (grid[row][i] === num || grid[i][col] === num) return false;
+    }
 
-// ── Hint ──────────────────────────────────────────────
-hintBtn.addEventListener('click', () => {
-  if (isSolving) return;
-  readBoardFromDOM();
+    const startRow = Math.floor(row / BOX) * BOX;
+    const startCol = Math.floor(col / BOX) * BOX;
 
-  if (isBoardEmpty()) {
-    showMessage('Enter some numbers first.', 'info');
-    return;
+    for (let r = startRow; r < startRow + BOX; r++) {
+      for (let c = startCol; c < startCol + BOX; c++) {
+        if (grid[r][c] === num) return false;
+      }
+    }
+
+    return true;
   }
 
-  const errors = getBoardErrors();
-  if (errors.size > 0) {
-    highlightErrors(errors);
-    showMessage('Fix conflicts before asking for a hint.', 'error');
-    return;
+  function findConflicts(grid) {
+    const conflicts = new Set();
+
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const num = grid[r][c];
+        if (num === 0) continue;
+
+        grid[r][c] = 0;
+        if (!isValidPlacement(grid, r, c, num)) {
+          conflicts.add(`${r},${c}`);
+        }
+        grid[r][c] = num;
+      }
+    }
+
+    return conflicts;
   }
 
-  const gridCopy = deepCopy(board);
-  const { solved } = solveWithSteps(gridCopy);
-
-  if (!solved) {
-    showMessage("No solution — can't hint on an unsolvable puzzle.", 'error');
-    return;
+  function highlightCells(keys, className = "error") {
+    keys.forEach((key) => {
+      const [r, c] = key.split(",").map(Number);
+      getCell(r, c).classList.add(className);
+    });
   }
 
-  const empties = [];
-  for (let r = 0; r < 9; r++)
-    for (let c = 0; c < 9; c++)
-      if (board[r][c] === 0) empties.push([r, c]);
+  function getBestEmptyCell(grid) {
+    let best = null;
+    let bestCandidates = null;
 
-  if (empties.length === 0) {
-    showMessage('Board is already complete!', 'success');
-    return;
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (grid[r][c] !== 0) continue;
+
+        const candidates = [];
+        for (let n = 1; n <= 9; n++) {
+          if (isValidPlacement(grid, r, c, n)) candidates.push(n);
+        }
+
+        if (candidates.length === 0) return { r, c, candidates };
+        if (!best || candidates.length < bestCandidates.length) {
+          best = { r, c };
+          bestCandidates = candidates;
+          if (candidates.length === 1) {
+            return { ...best, candidates: bestCandidates };
+          }
+        }
+      }
+    }
+
+    return best ? { ...best, candidates: bestCandidates } : null;
   }
 
-  const [r, c] = empties[Math.floor(Math.random() * empties.length)];
-  board[r][c] = gridCopy[r][c];
+  function solveGrid(inputGrid, recordSteps = false) {
+    const grid = cloneBoard(inputGrid);
+    const steps = [];
+    const stats = { placements: 0, backtracks: 0 };
+    const start = performance.now();
 
-  const cell = getCell(r, c);
-  cell.value = gridCopy[r][c];
-  cell.classList.remove('error', 'solved', 'animating');
-  cell.classList.add('hint');
+    function backtrack() {
+      const empty = getBestEmptyCell(grid);
+      if (!empty) return true;
+      if (empty.candidates.length === 0) return false;
 
-  showMessage(`Hint: row ${r+1}, col ${c+1} = ${gridCopy[r][c]}`, 'hint');
-});
+      const { r, c, candidates } = empty;
 
-// ── Load Example ──────────────────────────────────────
-exampleBtn.addEventListener('click', () => {
-  if (isSolving) return;
-  const puzzle = EXAMPLES[exampleIndex % EXAMPLES.length];
-  exampleIndex++;
+      for (const num of candidates) {
+        grid[r][c] = num;
+        stats.placements++;
+        if (recordSteps) {
+          steps.push({ type: "place", r, c, value: num });
+        }
 
-  board          = deepCopy(puzzle);
-  puzzleSnapshot = deepCopy(puzzle);
-  snapshotStale  = false;
-  paintBoardFromState(['given']);
-  clearMessage();
-  resetStats();
-});
+        if (backtrack()) return true;
 
-// ── Reset Puzzle ──────────────────────────────────────
-// FIX #1: snapshot is always taken before solving now, so this is
-// always accurate — no longer needs a fallback that saves solved state.
-resetBtn.addEventListener('click', () => {
-  if (isSolving) return;
-  if (!puzzleSnapshot) {
-    showMessage('Nothing to reset — solve a puzzle first.', 'info');
-    return;
+        grid[r][c] = 0;
+        stats.backtracks++;
+        if (recordSteps) {
+          steps.push({ type: "remove", r, c, value: 0 });
+        }
+      }
+
+      return false;
+    }
+
+    const solved = backtrack();
+    const elapsed = performance.now() - start;
+
+    return { solved, grid, steps, stats, elapsed };
   }
-  board         = deepCopy(puzzleSnapshot);
-  snapshotStale = false;
-  paintBoardFromState(['given']);
-  clearMessage();
-  resetStats();
-});
 
-// ── Clear All ─────────────────────────────────────────
-// FIX #3: cancel animation unconditionally — no guard on isSolving.
-clearBtn.addEventListener('click', () => {
-  // Stop any running animation immediately
-  if (animHandle !== null) {
-    clearTimeout(animHandle);
-    animHandle = null;
+  function countSolutions(inputGrid, limit = 2) {
+    const grid = cloneBoard(inputGrid);
+    let count = 0;
+
+    function search() {
+      if (count >= limit) return;
+
+      const empty = getBestEmptyCell(grid);
+      if (!empty) {
+        count++;
+        return;
+      }
+
+      if (empty.candidates.length === 0) return;
+
+      for (const num of empty.candidates) {
+        grid[empty.r][empty.c] = num;
+        search();
+        grid[empty.r][empty.c] = 0;
+        if (count >= limit) return;
+      }
+    }
+
+    search();
+    return count;
   }
-  isSolving = false;
-  setButtonsDisabled(false);
 
-  board          = Array.from({ length: 9 }, () => Array(9).fill(0));
-  puzzleSnapshot = null;
-  snapshotStale  = false;
+  function preparePuzzleAction() {
+    const conflicts = findConflicts(board);
+    allCells().forEach((cell) => cell.classList.remove("error"));
 
-  allCells().forEach(cell => {
-    cell.value = '';
-    cell.classList.remove('given','solved','hint','error','animating',
-                          'hl-rc','hl-box','hl-same-digit');
+    if (board.flat().every((value) => value === 0)) {
+      showMessage("Enter a puzzle or load a preset first.", "warning");
+      return false;
+    }
+
+    if (conflicts.size > 0) {
+      highlightCells(conflicts);
+      showMessage("Fix the highlighted conflicts first.", "error");
+      return false;
+    }
+
+    return true;
+  }
+
+  function solveInstantly() {
+    if (!preparePuzzleAction()) return;
+
+    stopAnimation(false);
+    const result = solveGrid(board, true);
+
+    if (!result.solved) {
+      showMessage("This puzzle has no solution.", "error");
+      actionText.textContent = "The solver reached a dead end for every possible path.";
+      return;
+    }
+
+    board = cloneBoard(result.grid);
+    solutionBoard = cloneBoard(result.grid);
+    updateStats(result);
+    renderSolvedBoard();
+    autoSave();
+
+    const solutionCount = countSolutions(originalBoard);
+    const typeText = solutionCount === 1 ? "unique solution" : "multiple solutions";
+    showMessage(`Solved successfully. This puzzle has a ${typeText}.`, "success");
+    actionText.textContent = "The backtracking algorithm completed the board.";
+  }
+
+  function renderSolvedBoard() {
+    const classes = new Map();
+
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (originalBoard[r][c] === 0 && board[r][c] !== 0) {
+          classes.set(`${r},${c}`, ["solved"]);
+        }
+      }
+    }
+
+    renderBoard(classes);
+  }
+
+  function startAnimation() {
+    if (!preparePuzzleAction()) return;
+
+    stopAnimation(false);
+    const result = solveGrid(board, true);
+
+    if (!result.solved) {
+      showMessage("This puzzle has no solution.", "error");
+      return;
+    }
+
+    animation = {
+      running: true,
+      paused: false,
+      stopped: false,
+      steps: result.steps,
+      index: 0,
+      timer: null,
+      original: cloneBoard(board),
+      finalBoard: cloneBoard(result.grid)
+    };
+
+    solutionBoard = cloneBoard(result.grid);
+    updateStats(result);
+    board = cloneBoard(animation.original);
+    setAnimationControls(true);
+    updateProgress(0, animation.steps.length);
+    showMessage("Backtracking visualization started.", "info");
+    actionText.textContent = "The solver is searching for the best empty cell.";
+    playNextStep();
+  }
+
+  function playNextStep() {
+    if (!animation.running || animation.paused || animation.stopped) return;
+
+    if (animation.index >= animation.steps.length) {
+      board = cloneBoard(animation.finalBoard);
+      animation.running = false;
+      setAnimationControls(false);
+      renderSolvedBoard();
+      updateProgress(animation.steps.length, animation.steps.length);
+      showMessage("Visualization completed.", "success");
+      actionText.textContent = "The puzzle is solved.";
+      autoSave();
+      return;
+    }
+
+    const step = animation.steps[animation.index];
+    const key = `${step.r},${step.c}`;
+    const classes = new Map();
+
+    if (step.type === "place") {
+      board[step.r][step.c] = step.value;
+      classes.set(key, ["trying"]);
+      actionText.textContent =
+        `Trying ${step.value} at row ${step.r + 1}, column ${step.c + 1}.`;
+    } else {
+      board[step.r][step.c] = 0;
+      classes.set(key, ["backtracking"]);
+      actionText.textContent =
+        `Dead end found. Backtracking from row ${step.r + 1}, column ${step.c + 1}.`;
+    }
+
+    renderBoard(classes);
+    animation.index++;
+    updateProgress(animation.index, animation.steps.length);
+
+    const delay = Number(speedSelect.value);
+    animation.timer = window.setTimeout(playNextStep, delay);
+  }
+
+  function togglePause() {
+    if (!animation.running) return;
+
+    animation.paused = !animation.paused;
+    controls.pause.textContent = animation.paused ? "Resume" : "Pause";
+
+    if (animation.paused) {
+      clearTimeout(animation.timer);
+      showMessage("Visualization paused.", "info");
+      actionText.textContent = "Animation paused.";
+    } else {
+      showMessage("Visualization resumed.", "info");
+      playNextStep();
+    }
+  }
+
+  function stopAnimation(showNotice = true) {
+    if (animation.timer) clearTimeout(animation.timer);
+
+    if (animation.running && animation.original) {
+      board = cloneBoard(animation.original);
+    }
+
+    animation.running = false;
+    animation.paused = false;
+    animation.stopped = true;
+    animation.timer = null;
+    controls.pause.textContent = "Pause";
+    setAnimationControls(false);
+    renderBoard();
+    updateProgress(0, 0);
+
+    if (showNotice) {
+      showMessage("Visualization stopped. Original state restored.", "info");
+      actionText.textContent = "Animation stopped.";
+    }
+  }
+
+  function setAnimationControls(running) {
+    controls.animate.disabled = running;
+    controls.solve.disabled = running;
+    controls.hint.disabled = running;
+    controls.check.disabled = running;
+    controls.validate.disabled = running;
+    controls.reset.disabled = running;
+    controls.newPuzzle.disabled = running;
+    controls.import.disabled = running;
+    controls.undo.disabled = running || undoStack.length === 0;
+    controls.redo.disabled = running || redoStack.length === 0;
+    controls.pause.disabled = !running;
+    controls.stop.disabled = !running;
+
+    allCells().forEach((cell) => {
+      cell.readOnly = running || originalBoard[Number(cell.dataset.row)][Number(cell.dataset.col)] !== 0;
+    });
+  }
+
+  function updateProgress(current, total) {
+    const percentage = total ? (current / total) * 100 : 0;
+    progressBar.style.width = `${percentage}%`;
+    progressText.textContent = `${current} / ${total}`;
+  }
+
+  function updateStats(result) {
+    placementCountEl.textContent = result.stats.placements;
+    backtrackCountEl.textContent = result.stats.backtracks;
+    totalStepCountEl.textContent = result.steps.length;
+    executionTimeEl.textContent = `${result.elapsed.toFixed(2)} ms`;
+  }
+
+  function resetStats() {
+    placementCountEl.textContent = "—";
+    backtrackCountEl.textContent = "—";
+    totalStepCountEl.textContent = "—";
+    executionTimeEl.textContent = "—";
+    updateProgress(0, 0);
+  }
+
+  function giveHint() {
+    if (!preparePuzzleAction()) return;
+
+    const result = solveGrid(board);
+    if (!result.solved) {
+      showMessage("No hint is available because the puzzle is unsolvable.", "error");
+      return;
+    }
+
+    const emptyCells = [];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (board[r][c] === 0) emptyCells.push({ r, c });
+      }
+    }
+
+    if (emptyCells.length === 0) {
+      showMessage("The board is already complete.", "success");
+      return;
+    }
+
+    const choice = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    const value = result.grid[choice.r][choice.c];
+
+    setUserValue(choice.r, choice.c, value, { silent: true });
+    hintsUsed++;
+    hintCountEl.textContent = hintsUsed;
+
+    const classes = new Map([[`${choice.r},${choice.c}`, ["hint"]]]);
+    renderBoard(classes);
+    showMessage(
+      `Hint: row ${choice.r + 1}, column ${choice.c + 1} is ${value}.`,
+      "info"
+    );
+    actionText.textContent = "One correct value was revealed.";
+    autoSave();
+  }
+
+  function checkProgress() {
+    if (!preparePuzzleAction()) return;
+
+    const result = solveGrid(originalBoard);
+    if (!result.solved) {
+      showMessage("The original puzzle is unsolvable.", "error");
+      return;
+    }
+
+    const wrong = new Set();
+    let filled = 0;
+
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (board[r][c] !== 0) filled++;
+        if (
+          originalBoard[r][c] === 0 &&
+          board[r][c] !== 0 &&
+          board[r][c] !== result.grid[r][c]
+        ) {
+          wrong.add(`${r},${c}`);
+        }
+      }
+    }
+
+    allCells().forEach((cell) => cell.classList.remove("error"));
+
+    if (wrong.size > 0) {
+      highlightCells(wrong);
+      showMessage(`${wrong.size} incorrect entr${wrong.size === 1 ? "y" : "ies"} found.`, "error");
+    } else {
+      showMessage(`All ${filled} filled cells are correct so far.`, "success");
+    }
+  }
+
+  function validateBoard() {
+    if (board.flat().every((value) => value === 0)) {
+      showMessage("The board is empty.", "warning");
+      return;
+    }
+
+    const conflicts = findConflicts(board);
+    allCells().forEach((cell) => cell.classList.remove("error"));
+
+    if (conflicts.size > 0) {
+      highlightCells(conflicts);
+      showMessage(`${conflicts.size} conflicting cell${conflicts.size === 1 ? "" : "s"} found.`, "error");
+      return;
+    }
+
+    const count = countSolutions(board);
+    if (count === 0) {
+      showMessage("No direct conflicts, but the puzzle has no solution.", "error");
+    } else if (count === 1) {
+      showMessage("Valid puzzle with a unique solution.", "success");
+    } else {
+      showMessage("Valid puzzle, but it has multiple solutions.", "warning");
+    }
+  }
+
+  function detectManualCompletion() {
+    if (board.flat().some((value) => value === 0)) return;
+    if (findConflicts(board).size > 0) return;
+
+    const result = solveGrid(originalBoard);
+    if (result.solved && boardsEqual(board, result.grid)) {
+      showMessage("Excellent — you completed the puzzle correctly!", "success");
+      actionText.textContent = "Puzzle completed manually.";
+    }
+  }
+
+  function loadPuzzle(grid, message = "Puzzle loaded.") {
+    stopAnimation(false);
+    board = cloneBoard(grid);
+    originalBoard = cloneBoard(grid);
+    solutionBoard = null;
+    selected = null;
+    hintsUsed = 0;
+    undoStack = [];
+    redoStack = [];
+    hintCountEl.textContent = "0";
+    resetStats();
+    renderBoard();
+    updateHistoryButtons();
+    showMessage(message, "success");
+    actionText.textContent = "The puzzle is ready.";
+    autoSave();
+  }
+
+  function loadRandomPuzzle() {
+    const difficulty = difficultySelect.value;
+    const choices = PUZZLES[difficulty];
+    const puzzle = choices[Math.floor(Math.random() * choices.length)];
+    loadPuzzle(stringToBoard(puzzle), `${difficulty[0].toUpperCase() + difficulty.slice(1)} puzzle loaded.`);
+  }
+
+  function resetPuzzle() {
+    stopAnimation(false);
+    board = cloneBoard(originalBoard);
+    solutionBoard = null;
+    hintsUsed = 0;
+    hintCountEl.textContent = "0";
+    undoStack = [];
+    redoStack = [];
+    resetStats();
+    renderBoard();
+    updateHistoryButtons();
+    showMessage("Puzzle reset.", "info");
+    actionText.textContent = "Returned to the original clues.";
+    autoSave();
+  }
+
+  function clearBoard() {
+    stopAnimation(false);
+    board = createEmptyBoard();
+    originalBoard = createEmptyBoard();
+    solutionBoard = null;
+    selected = null;
+    hintsUsed = 0;
+    hintCountEl.textContent = "0";
+    undoStack = [];
+    redoStack = [];
+    puzzleStringEl.value = "";
+    resetStats();
+    renderBoard();
+    updateHistoryButtons();
+    showMessage("Board cleared.", "info");
+    actionText.textContent = "Enter a puzzle or load a preset.";
+    autoSave();
+  }
+
+  function undo() {
+    const move = undoStack.pop();
+    if (!move) return;
+
+    redoStack.push(move);
+    board[move.r][move.c] = move.from;
+    solutionBoard = null;
+    renderBoard();
+    updateHistoryButtons();
+    autoSave();
+    actionText.textContent = "Last move undone.";
+  }
+
+  function redo() {
+    const move = redoStack.pop();
+    if (!move) return;
+
+    undoStack.push(move);
+    board[move.r][move.c] = move.to;
+    solutionBoard = null;
+    renderBoard();
+    updateHistoryButtons();
+    autoSave();
+    actionText.textContent = "Move restored.";
+  }
+
+  function updateHistoryButtons() {
+    controls.undo.disabled = animation.running || undoStack.length === 0;
+    controls.redo.disabled = animation.running || redoStack.length === 0;
+  }
+
+  function importPuzzle() {
+    const grid = stringToBoard(puzzleStringEl.value);
+
+    if (!grid) {
+      showMessage("Enter exactly 81 digits using 0 or . for empty cells.", "error");
+      return;
+    }
+
+    if (findConflicts(grid).size > 0) {
+      showMessage("The imported puzzle contains conflicts.", "error");
+      return;
+    }
+
+    loadPuzzle(grid, "Puzzle imported.");
+  }
+
+  async function copyText(text, successMessage) {
+    try {
+      await navigator.clipboard.writeText(text);
+      showMessage(successMessage, "success");
+    } catch {
+      puzzleStringEl.value = text;
+      puzzleStringEl.select();
+      document.execCommand("copy");
+      showMessage(successMessage, "success");
+    }
+  }
+
+  function exportPuzzle() {
+    const value = boardToString(board);
+    puzzleStringEl.value = value;
+    copyText(value, "Puzzle string copied.");
+  }
+
+  function sharePuzzle() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("puzzle", boardToString(originalBoard));
+    copyText(url.toString(), "Share URL copied.");
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    themeIcon.textContent = theme === "dark" ? "☀" : "☾";
+    localStorage.setItem(THEME_KEY, theme);
+  }
+
+  function toggleTheme() {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+  }
+
+  function autoSave() {
+    const payload = {
+      board,
+      originalBoard,
+      hintsUsed,
+      difficulty: difficultySelect.value
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function restoreSavedState() {
+    const urlPuzzle = new URL(window.location.href).searchParams.get("puzzle");
+    if (urlPuzzle) {
+      const grid = stringToBoard(urlPuzzle);
+      if (grid && findConflicts(grid).size === 0) {
+        loadPuzzle(grid, "Shared puzzle loaded.");
+        return true;
+      }
+    }
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (!saved?.board || !saved?.originalBoard) return false;
+
+      board = saved.board;
+      originalBoard = saved.originalBoard;
+      hintsUsed = Number(saved.hintsUsed || 0);
+      difficultySelect.value = saved.difficulty || "easy";
+      hintCountEl.textContent = hintsUsed;
+      renderBoard();
+      showMessage("Saved progress restored.", "info");
+      actionText.textContent = "Your previous board was restored.";
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function showMessage(text, type = "info") {
+    messageEl.textContent = text;
+    messageEl.className = `message ${type}`;
+
+    clearTimeout(showMessage.timer);
+    showMessage.timer = setTimeout(() => {
+      messageEl.classList.add("hidden");
+    }, 4000);
+  }
+
+  function clearMessage() {
+    messageEl.className = "message hidden";
+  }
+
+  controls.solve.addEventListener("click", solveInstantly);
+  controls.animate.addEventListener("click", startAnimation);
+  controls.pause.addEventListener("click", togglePause);
+  controls.stop.addEventListener("click", () => stopAnimation(true));
+  controls.hint.addEventListener("click", giveHint);
+  controls.check.addEventListener("click", checkProgress);
+  controls.validate.addEventListener("click", validateBoard);
+  controls.reset.addEventListener("click", resetPuzzle);
+  controls.clear.addEventListener("click", clearBoard);
+  controls.undo.addEventListener("click", undo);
+  controls.redo.addEventListener("click", redo);
+  controls.newPuzzle.addEventListener("click", loadRandomPuzzle);
+  controls.import.addEventListener("click", importPuzzle);
+  controls.export.addEventListener("click", exportPuzzle);
+  controls.share.addEventListener("click", sharePuzzle);
+  controls.theme.addEventListener("click", toggleTheme);
+
+  controls.erase.addEventListener("click", () => {
+    if (selected) setUserValue(selected.r, selected.c, 0);
   });
 
-  clearMessage();
-  resetStats();
-});
+  document.querySelectorAll("[data-number]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (selected) {
+        setUserValue(selected.r, selected.c, Number(button.dataset.number));
+        getCell(selected.r, selected.c).focus();
+      }
+    });
+  });
 
-// ── Validate ──────────────────────────────────────────
-// FIX #5: explicitly detect and report an empty board.
-validateBtn.addEventListener('click', () => {
-  if (isSolving) return;
-  readBoardFromDOM();
+  document.addEventListener("keydown", (event) => {
+    if (event.ctrlKey && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      event.shiftKey ? redo() : undo();
+    }
 
-  if (isBoardEmpty()) {
-    showMessage('Board is empty — enter some numbers first.', 'info');
-    return;
-  }
-
-  const errors = getBoardErrors();
-  allCells().forEach(c => c.classList.remove('error'));
-
-  if (errors.size === 0) {
-    showMessage('No conflicts found — looks good!', 'success');
-  } else {
-    highlightErrors(errors);
-    showMessage(`${errors.size} conflict${errors.size > 1 ? 's' : ''} found.`, 'error');
-  }
-});
-
-// ── Utility ───────────────────────────────────────────
-function deepCopy(grid) {
-  return grid.map(row => [...row]);
-}
-
-function emptySet() {
-  const s = new Set();
-  for (let r = 0; r < 9; r++)
-    for (let c = 0; c < 9; c++)
-      if (board[r][c] === 0) s.add(`${r},${c}`);
-  return s;
-}
-
-/** Repaint the entire board DOM from `board`.
- *  classNames: CSS classes applied to every non-zero cell. */
-function paintBoardFromState(classNames) {
-  allCells().forEach(cell => {
-    const r = +cell.dataset.row, c = +cell.dataset.col;
-    cell.classList.remove('given','solved','hint','error','animating',
-                          'hl-rc','hl-box','hl-same-digit');
-    if (board[r][c] !== 0) {
-      cell.value = board[r][c];
-      classNames.forEach(cn => cell.classList.add(cn));
-    } else {
-      cell.value = '';
+    if (event.ctrlKey && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      redo();
     }
   });
-}
 
-function updateStats(placements, time) {
-  stepCountEl.textContent = placements;
-  execTimeEl.textContent  = time;
-}
+  window.addEventListener("beforeunload", autoSave);
 
-function resetStats() {
-  stepCountEl.textContent = '—';
-  execTimeEl.textContent  = '—';
-}
+  function init() {
+    buildBoard();
+    applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+    resetStats();
 
-function setButtonsDisabled(disabled) {
-  [solveBtn, animateBtn, hintBtn, exampleBtn,
-   resetBtn, validateBtn].forEach(btn => {
-    btn.disabled = disabled;
-  });
-  // clearBtn is intentionally excluded — it stays enabled always
-}
+    if (!restoreSavedState()) {
+      loadRandomPuzzle();
+    }
 
-function showMessage(text, type = 'info') {
-  messageEl.textContent = text;
-  messageEl.className   = `message ${type}`;
-}
+    renderBoard();
+    updateHistoryButtons();
+  }
 
-function clearMessage() {
-  messageEl.className = 'message hidden';
-}
-
-// ── Init ──────────────────────────────────────────────
-buildBoard();
+  init();
+})();
