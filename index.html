@@ -14,12 +14,35 @@
       <p class="subtitle">Enter your puzzle and hit Solve</p>
     </header>
 
+    <!-- Stats bar -->
+    <div class="stats-bar" id="statsBar">
+      <div class="stat">
+        <span class="stat-label">Steps</span>
+        <span class="stat-value" id="stepCount">—</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-label">Time</span>
+        <span class="stat-value" id="execTime">—</span>
+      </div>
+    </div>
+
+    <!-- Board -->
     <div class="board" id="board"></div>
 
+    <!-- Controls row 1 -->
     <div class="controls">
-      <button id="solveBtn" class="btn btn-primary">Solve</button>
-      <button id="clearBtn" class="btn btn-secondary">Clear</button>
-      <button id="validateBtn" class="btn btn-secondary">Validate</button>
+      <button id="solveBtn"   class="btn btn-primary">▶ Solve</button>
+      <button id="animateBtn" class="btn btn-primary btn-animate">⏱ Animate</button>
+      <button id="hintBtn"    class="btn btn-secondary">💡 Hint</button>
+    </div>
+
+    <!-- Controls row 2 -->
+    <div class="controls controls-secondary">
+      <button id="exampleBtn" class="btn btn-ghost">Load Example</button>
+      <button id="resetBtn"   class="btn btn-ghost">Reset Puzzle</button>
+      <button id="clearBtn"   class="btn btn-ghost">Clear All</button>
+      <button id="validateBtn" class="btn btn-ghost">Validate</button>
     </div>
 
     <div id="message" class="message hidden"></div>
