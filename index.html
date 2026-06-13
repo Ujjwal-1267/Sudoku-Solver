@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sudoku Solver</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Sudoku Solver</h1>
+      <p class="subtitle">Enter your puzzle and hit Solve</p>
+    </header>
+
+    <div class="board" id="board"></div>
+
+    <div class="controls">
+      <button id="solveBtn" class="btn btn-primary">Solve</button>
+      <button id="clearBtn" class="btn btn-secondary">Clear</button>
+      <button id="validateBtn" class="btn btn-secondary">Validate</button>
+    </div>
+
+    <div id="message" class="message hidden"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
