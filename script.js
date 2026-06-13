@@ -500,6 +500,20 @@
     addStepToLog(step);
   }
 
+  function captureCustomPuzzleIfNeeded() {
+    const originalIsEmpty = originalBoard.flat().every((value) => value === 0);
+    const currentHasValues = board.flat().some((value) => value !== 0);
+
+    if (originalIsEmpty && currentHasValues) {
+      originalBoard = cloneBoard(board);
+      renderBoard();
+      autoSave();
+      return true;
+    }
+
+    return false;
+  }
+
   function preparePuzzleAction() {
     const conflicts = findConflicts(board);
     allCells().forEach((cell) => cell.classList.remove("error"));
@@ -521,6 +535,7 @@
   function solveInstantly() {
     if (!preparePuzzleAction()) return;
 
+    captureCustomPuzzleIfNeeded();
     stopAnimation(false);
     const result = solveGrid(board, true);
 
@@ -565,6 +580,7 @@
   function startAnimation() {
     if (!preparePuzzleAction()) return;
 
+    captureCustomPuzzleIfNeeded();
     stopAnimation(false);
     const result = solveGrid(board, true);
 
@@ -724,6 +740,7 @@
   function giveHint() {
     if (!preparePuzzleAction()) return;
 
+    captureCustomPuzzleIfNeeded();
     const result = solveGrid(board);
     if (!result.solved) {
       showMessage("No hint is available because the puzzle is unsolvable.", "error");
@@ -761,18 +778,44 @@
   function checkProgress() {
     if (!preparePuzzleAction()) return;
 
-    const result = solveGrid(originalBoard);
-    if (!result.solved) {
+    captureCustomPuzzleIfNeeded();
+
+    const originalSolutionCount = countSolutions(originalBoard);
+    if (originalSolutionCount === 0) {
       showMessage("The original puzzle is unsolvable.", "error");
       return;
     }
 
+    allCells().forEach((cell) => cell.classList.remove("error"));
+
+    // A puzzle with multiple solutions has no single answer grid against
+    // which every user entry can be compared. In that case, verify that
+    // the current entries can still lead to at least one complete solution.
+    if (originalSolutionCount > 1) {
+      const currentResult = solveGrid(board);
+
+      if (currentResult.solved) {
+        showMessage(
+          "Your current entries can still lead to a valid solution.",
+          "success"
+        );
+      } else {
+        showMessage(
+          "The current entries make this puzzle unsolvable.",
+          "error"
+        );
+      }
+      return;
+    }
+
+    const result = solveGrid(originalBoard);
     const wrong = new Set();
     let filled = 0;
 
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
         if (board[r][c] !== 0) filled++;
+
         if (
           originalBoard[r][c] === 0 &&
           board[r][c] !== 0 &&
@@ -783,11 +826,12 @@
       }
     }
 
-    allCells().forEach((cell) => cell.classList.remove("error"));
-
     if (wrong.size > 0) {
       highlightCells(wrong);
-      showMessage(`${wrong.size} incorrect entr${wrong.size === 1 ? "y" : "ies"} found.`, "error");
+      showMessage(
+        `${wrong.size} incorrect entr${wrong.size === 1 ? "y" : "ies"} found.`,
+        "error"
+      );
     } else {
       showMessage(`All ${filled} filled cells are correct so far.`, "success");
     }
@@ -822,12 +866,9 @@
     if (board.flat().some((value) => value === 0)) return;
     if (findConflicts(board).size > 0) return;
 
-    const result = solveGrid(originalBoard);
-    if (result.solved && boardsEqual(board, result.grid)) {
-      showMessage("Excellent — you completed the puzzle correctly!", "success");
-      setVisualizerStatus("Completed", "solved");
-      visualizerActionEl.textContent = "Solved manually";
-    }
+    showMessage("Excellent — you completed the puzzle correctly!", "success");
+    setVisualizerStatus("Completed", "solved");
+    visualizerActionEl.textContent = "Solved manually";
   }
 
   function loadPuzzle(grid, message = "Puzzle loaded.") {
